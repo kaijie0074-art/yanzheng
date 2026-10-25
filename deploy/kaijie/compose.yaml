@@ -1,0 +1,72 @@
+name: yanzheng
+
+services:
+  database:
+    image: surrealdb/surrealdb:v2.7.0
+    command: ["start", "--log", "warn", "--user", "${SURREAL_USER:?required}", "--pass", "${SURREAL_PASSWORD:?required}", "rocksdb:/mydata/database.db"]
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:18002:8000"
+    volumes:
+      - /var/lib/yanzheng/database:/mydata
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  app:
+    image: "${YANZHENG_IMAGE:?required}"
+    # The existing GPT gateway accepts loopback connections only.
+    # Both application listeners remain loopback-only in this network namespace.
+    network_mode: host
+    user: "10001:10001"
+    env_file:
+      - /etc/yanzheng/runtime.env
+    environment:
+      API_HOST: "127.0.0.1"
+      FRONTEND_BIND_HOST: "127.0.0.1"
+      API_URL: "https://kaijie.store/yanzheng"
+      INTERNAL_API_URL: "http://127.0.0.1:5055"
+      CORS_ORIGINS: "https://kaijie.store"
+      SURREAL_URL: "ws://127.0.0.1:18002/rpc"
+      SURREAL_NAMESPACE: yanzheng
+      SURREAL_DATABASE: yanzheng
+      OPEN_NOTEBOOK_MAX_UPLOAD_SIZE_MB: "21"
+      OPEN_NOTEBOOK_WORKER_MAX_TASKS: "1"
+      OPEN_NOTEBOOK_ENABLE_DOCLING: "false"
+      OPEN_NOTEBOOK_ENABLE_CRAWL4AI: "false"
+      RESEARCH_PREVIEW_BODY_FONT: /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc
+      RESEARCH_PREVIEW_HEADING_FONT: /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc
+      PYTHONDONTWRITEBYTECODE: "1"
+      HOME: /app/data
+      NO_PROXY: "localhost,127.0.0.1,::1"
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - /var/lib/yanzheng/app:/app/data
+    depends_on:
+      - database
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /app/frontend/.next/cache:size=64m,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1800m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:5055/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
